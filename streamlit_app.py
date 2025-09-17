@@ -396,7 +396,7 @@ def main():
 
         # Target distance
         target_distance = st.slider(
-            "Расстояние для детального анализа (м)",
+            "Расстояние между взрывом (куда прилетела КВВ) и целью",
             min_value=float(distance_range[0]),
             max_value=float(distance_range[-1]),
             value=float(np.mean(distance_range)),
@@ -489,3 +489,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
