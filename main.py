@@ -263,21 +263,6 @@ def create_plots(masses, distance_range, selected_target_name, selected_target_v
     ax.grid(True)
     ax.legend(fontsize='small')
 
-    # 6) Контур p_dyn(q,R)
-    ax = axes[5]
-    mass_grid = np.linspace(min(masses), max(masses), 50)
-    R_grid = np.linspace(np.min(distance_range), np.max(distance_range), 50)
-    M, Rg = np.meshgrid(mass_grid, R_grid)
-    p_dyn_grid = np.zeros_like(M)
-    for i in range(M.shape[0]):
-        for j in range(M.shape[1]):
-            p_dyn_grid[i, j] = calculate_dynamic_pressure_from_state(calculate_overpressure(M[i, j], Rg[i, j])) / 1000.0
-    cs = ax.contourf(M, Rg, p_dyn_grid, levels=30)
-    ax.set_xlabel('Масса, кг')
-    ax.set_ylabel('Расстояние, м')
-    ax.set_title('Контур p_φок(q, R) (кПа)')
-    plt.colorbar(cs, ax=ax, label='p_φок, кПа')
-
     plt.tight_layout()
 
     # Временные сигналы
@@ -432,4 +417,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
