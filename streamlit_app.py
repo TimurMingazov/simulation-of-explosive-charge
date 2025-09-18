@@ -20,12 +20,43 @@ INITIAL_TEMPERATURE = 293.0  # К
 ATMOSPHERIC_PRESSURE = 0.101  # МПа
 
 DEFAULT_TARGETS = {
-    "Кирпичные малоэтажные здания": 40.0,
-    "Промышленные здания (металл, ж/б каркас)": 80.0,
-    "Гусеница танка": 150.0,
-    "Лёгкие автомобильные конструкции": 60.0,
-    "Бетонные ограждения": 120.0,
+    "Кирпичные малоэтажные здания": {
+        "Полное разрушение": 40.0,
+        "Сильные повреждения": 30.0,
+        "Средние повреждения": 20.0,
+        "Слабые повреждения": 12.0
+    },
+    "Промышленные здания (металл, ж/б каркас)": {
+        "Полное разрушение": 80.0,
+        "Сильные повреждения": 60.0,
+        "Средние повреждения": 40.0,
+        "Слабые повреждения": 25.0
+    },
+    "Подземные сети коммунального хозяйства": {
+        "Полное разрушение": 1500.0,
+        "Сильные повреждения": 1250.0,
+        "Средние повреждения": 800.0,
+        "Слабые повреждения": 400.0
+    },
+    "Надводные корабли": {
+        "Полное разрушение": 500.0,
+        "Сильные повреждения": 120.0,
+        "Средние повреждения": 42.0,
+        "Слабые повреждения": 18.0
+    },
+    "Самолеты на аэродроме": {
+        "Полное разрушение": 42.0,
+        "Сильные повреждения": 17.0,
+        "Средние повреждения": 10.0,
+        "Слабые повреждения": 5.0
+    }
 }
+
+
+# Добавим функцию для получения степеней разрушения
+def get_damage_levels(target_name):
+    """Возвращает доступные степени разрушения для цели"""
+    return list(DEFAULT_TARGETS[target_name].keys())
 
 # ---------------------------
 # БАЗА ДАННЫХ ВЗРЫВЧАТЫХ ВЕЩЕСТВ
@@ -41,29 +72,28 @@ EXPLOSIVES_DB = {
         "density": 1780,
         "color": "#00ff00"
     },
-    "Аммонит №6 ЖВ": {
-        "tnt_equivalent": 0.85,
-        "density": 1500,
+    "Пентолит 50/50 (ТЭН/ТНТ)": {
+        "tnt_equivalent": 1.13,
+        "density": 1700,
         "color": "#0000ff"
     },
-    "ТЭН (ПЭТН)": {
+    "ТЭН": {
         "tnt_equivalent": 1.33,
         "density": 1770,
         "color": "#ff00ff"
     },
-    "Динамит": {
-        "tnt_equivalent": 1.25,
-        "density": 1450,
+    "Аммонийная селитра": {
+        "tnt_equivalent": 0.34,
+        "density": 1725,
         "color": "#ffff00"
     },
-    "Чёрный порох": {
-        "tnt_equivalent": 0.55,
-        "density": 900,
+    "Гликольдинитрат": {
+        "tnt_equivalent": 1.57,
+        "density": 1760,
         "color": "#000000"
     },
 }
 DEFAULT_EXPLOSIVE = "Тротил (TNT)"
-
 
 # ---------------------------
 # Базовые функции расчёта
@@ -243,95 +273,104 @@ def create_plots(masses, distance_range, selected_target_name, selected_target_v
                  tnt_equivalent=1.0, explosive_name="ВВ"):
     distance_range = np.array(distance_range)
 
-    fig1, axes = plt.subplots(3, 2, figsize=(15, 12))
-    axes = axes.flatten()
+    figures = []  # Список для всех графиков
 
-    # 1) Δp
-    ax = axes[0]
+    # 1) Δp - отдельный график
+    fig1, ax = plt.subplots(figsize=(10, 6))
     for m in masses:
         overpressures = np.array([calculate_overpressure(m, r, tnt_equivalent) for r in distance_range]) * 1000.0
-        ax.plot(distance_range, overpressures, label=f'{m} кг')
+        ax.plot(distance_range, overpressures, label=f'{m} кг', linewidth=2)
     ax.axhline(y=selected_target_value, color='r', linestyle='--', label=f'Цель: {selected_target_name}')
     ax.set_xlabel('Расстояние, м')
     ax.set_ylabel('Δp, кПа')
     ax.set_title(f'Избыточное давление Δp от расстояния ({explosive_name})')
     ax.grid(True)
-    ax.legend(fontsize='small')
+    ax.legend()
+    plt.tight_layout()
+    figures.append(fig1)
 
-    # 2) Удельный импульс
-    ax = axes[1]
+    # 2) Удельный импульс - отдельный график
+    fig2, ax = plt.subplots(figsize=(10, 6))
     for m in masses:
         overpressures = np.array([calculate_overpressure(m, r, tnt_equivalent) for r in distance_range])
         specific_impulses = np.array(
             [calculate_specific_impulse(p, r, m, tnt_equivalent) for p, r in zip(overpressures, distance_range)])
-        ax.plot(distance_range, specific_impulses, label=f'{m} кг')
+        ax.plot(distance_range, specific_impulses, label=f'{m} кг', linewidth=2)
     ax.set_xlabel('Расстояние, м')
     ax.set_ylabel('Удельный импульс, Па·с')
     ax.set_title(f'Удельный импульс I = Δp·τ_+ ({explosive_name})')
     ax.grid(True)
-    ax.legend(fontsize='small')
+    ax.legend()
+    plt.tight_layout()
+    figures.append(fig2)
 
-    # 3) Скорость ударной волны
-    ax = axes[2]
+    # 3) Скорость ударной волны - отдельный график
+    fig3, ax = plt.subplots(figsize=(10, 6))
     for m in masses:
         overpressures = np.array([calculate_overpressure(m, r, tnt_equivalent) for r in distance_range])
         D = np.array([calculate_shock_wave_velocity(p) for p in overpressures])
-        ax.plot(distance_range, D, label=f'{m} кг')
+        ax.plot(distance_range, D, label=f'{m} кг', linewidth=2)
     ax.set_xlabel('Расстояние, м')
     ax.set_ylabel('Скорость ударной волны, м/с')
     ax.set_title(f'Скорость ударной волны D_φ(R) ({explosive_name})')
     ax.grid(True)
-    ax.legend(fontsize='small')
+    ax.legend()
+    plt.tight_layout()
+    figures.append(fig3)
 
-    # 4) τ_+
-    ax = axes[3]
+    # 4) τ_+ - отдельный график
+    fig4, ax = plt.subplots(figsize=(10, 6))
     for m in masses:
         taus = np.array([calculate_compression_duration(m, r, tnt_equivalent) for r in distance_range])
-        ax.plot(distance_range, taus, label=f'{m} кг')
+        ax.plot(distance_range, taus, label=f'{m} кг', linewidth=2)
     ax.set_xlabel('Расстояние, м')
     ax.set_ylabel('τ_+, с')
     ax.set_title(f'Длительность фазы сжатия τ_+ (R) ({explosive_name})')
     ax.grid(True)
-    ax.legend(fontsize='small')
+    ax.legend()
+    plt.tight_layout()
+    figures.append(fig4)
 
-    # 5) p_dyn(R)
-    ax = axes[4]
+    # 5) p_dyn(R) - отдельный график
+    fig5, ax = plt.subplots(figsize=(10, 6))
     for m in masses:
         overpressures = np.array([calculate_overpressure(m, r, tnt_equivalent) for r in distance_range])
         p_dyn = np.array([calculate_dynamic_pressure_from_state(p) for p in overpressures])
-        ax.plot(distance_range, p_dyn / 1000.0, label=f'{m} кг')
+        ax.plot(distance_range, p_dyn / 1000.0, label=f'{m} кг', linewidth=2)
     ax.set_xlabel('Расстояние, м')
     ax.set_ylabel('p_dyn, кПа')
     ax.set_title(f'Скоростной напор p_φок(R) ({explosive_name})')
     ax.grid(True)
-    ax.legend(fontsize='small')
-
+    ax.legend()
     plt.tight_layout()
+    figures.append(fig5)
 
-    # Временные сигналы
-    fig2, ax = plt.subplots(figsize=(10, 6))
-    max_tau = max([calculate_compression_duration(m, target_distance, tnt_equivalent) + calculate_rarefaction_duration(
-        m, tnt_equivalent) for m in masses])
+    # 6) Временные сигналы - отдельный график
+    fig6, ax = plt.subplots(figsize=(10, 6))
+    max_tau = max([calculate_compression_duration(m, target_distance, tnt_equivalent) +
+                   calculate_rarefaction_duration(m, tnt_equivalent) for m in masses])
     t_stop = max(3 * max_tau, 0.05)
     t = np.linspace(0, t_stop, 1000)
 
     for m in masses:
         p_t = pressure_time_history(m, target_distance, t, tnt_equivalent) * 1000.0
         p_dyn_t = dynamic_pressure_time_history(m, target_distance, t, tnt_equivalent) / 1000.0
-        ax.plot(t, p_t, label=f'Δp(t), m={m} кг')
-        ax.plot(t, p_dyn_t, linestyle='--', label=f'p_dyn(t), m={m} кг')
+        ax.plot(t, p_t, label=f'Δp(t), m={m} кг', linewidth=2)
+        ax.plot(t, p_dyn_t, linestyle='--', label=f'p_dyn(t), m={m} кг', linewidth=2)
 
     ax.set_xlabel('Время, с')
     ax.set_ylabel('Давление, кПа')
     ax.set_title(f'Временные зависимости в точке R={target_distance:.2f} м ({explosive_name})')
     ax.grid(True)
-    ax.legend(fontsize='small')
+    ax.legend()
+    plt.tight_layout()
+    figures.append(fig6)
 
-    return fig1, fig2
+    return figures
 
 
 # ---------------------------
-# Основное приложение
+# Основное приложение Streamlit
 # ---------------------------
 
 def main():
@@ -342,7 +381,49 @@ def main():
 
     # Сайдбар с настройками
     with st.sidebar:
+
         st.header("⚙️ Параметры расчета")
+
+        # Выбор цели
+        selected_target_name = st.selectbox(
+            "Выберите цель",
+            options=list(DEFAULT_TARGETS.keys()),
+            index=0
+        )
+
+        # Выбор степени разрушения
+        damage_levels = get_damage_levels(selected_target_name)
+        selected_damage_level = st.selectbox(
+            "Степень разрушения",
+            options=damage_levels,
+            index=0,
+            help="Выберите требуемую степень повреждения цели"
+        )
+
+        # Получаем стандартное значение
+        selected_value = DEFAULT_TARGETS[selected_target_name][selected_damage_level]
+
+        # Настройка стойкости цели
+        custom_resistance = st.number_input(
+            "Или задайте точное значение стойкости (кПа)",
+            value=float(selected_value),
+            min_value=1.0,
+            max_value=1000.0,
+            step=1.0,
+            help="Можно ввести точное значение для тонкой настройки"
+        )
+
+        # Используем кастомное значение если оно отличается от стандартного
+        if custom_resistance != selected_value:
+            selected_value = custom_resistance
+            damage_display = f"пользовательское значение ({custom_resistance} кПа)"
+        else:
+            damage_display = f"{selected_damage_level} ({selected_value} кПа)"
+
+        st.info(f"**Выбрано:** {selected_target_name}\n"
+                f"**Стойкость:** {damage_display}")
+
+        st.header("⚙️ Параметры взрывчатого вещества")
 
         # Выбор типа ВВ
         explosive_names = list(EXPLOSIVES_DB.keys())
@@ -353,7 +434,6 @@ def main():
         )
         selected_explosive_data = EXPLOSIVES_DB[selected_explosive_name]
         tnt_equiv = selected_explosive_data["tnt_equivalent"]
-        explosive_color = selected_explosive_data.get("color", "#ff0000")
 
         st.info(f"**{selected_explosive_name}**\n\n"
                 f"Коэффициент приведения к тротилу: **{tnt_equiv}**\n\n"
@@ -367,25 +447,6 @@ def main():
         )
         masses = parse_mass_list(masses_input)
 
-        # Выбор цели
-        selected_name = st.selectbox(
-            "Выберите цель",
-            options=list(DEFAULT_TARGETS.keys()),
-            index=0
-        )
-        selected_value = DEFAULT_TARGETS[selected_name]
-
-        # Настройка стойкости цели
-        custom_resistance = st.number_input(
-            "Стойкость цели (кПа)",
-            value=float(selected_value),
-            min_value=1.0,
-            max_value=1000.0,
-            step=1.0,
-            help="Можно изменить значение стойкости выбранной цели"
-        )
-        selected_value = custom_resistance
-
         # Диапазон расстояний
         dist_input = st.text_input(
             "Диапазон расстояний",
@@ -396,7 +457,7 @@ def main():
 
         # Target distance
         target_distance = st.slider(
-            "Расстояние между взрывом (куда прилетела КВВ) и целью",
+            "Расстояние между взрывом и целью (м)",
             min_value=float(distance_range[0]),
             max_value=float(distance_range[-1]),
             value=float(np.mean(distance_range)),
@@ -419,18 +480,51 @@ def main():
         with col3:
             st.metric("Массы заряда", ", ".join(map(str, masses)) + " кг")
         with col4:
-            st.metric("Цель", f"{selected_name} ({selected_value} кПа)")
+            st.metric("Цель", f"{selected_target_name}\n({selected_damage_level}: {selected_value} кПа)")
 
         # Создаем и показываем графики
         with st.spinner("Создание графиков..."):
-            fig1, fig2 = create_plots(masses, distance_range, selected_name, selected_value,
-                                      target_distance, tnt_equiv, selected_explosive_name)
+            figures = create_plots(masses, distance_range, selected_target_name, selected_value,
+                                   target_distance, tnt_equiv, selected_explosive_name)
 
-            st.subheader("📊 Основные графики")
-            st.pyplot(fig1)
+            # Отображаем каждый график отдельно с заголовком
+            st.subheader("📈 Избыточное давление Δp от расстояния")
+            st.pyplot(figures[0])
+            st.markdown(f"""
+            **Анализ:** График показывает зависимость избыточного давления от расстояния для {selected_explosive_name}.
+            Красная пунктирная линия indicates целевое значение давления для выбранной цели.
+            """)
 
-            st.subheader("⏰ Временные зависимости")
-            st.pyplot(fig2)
+            st.subheader("📊 Удельный импульс I = Δp·τ₊")
+            st.pyplot(figures[1])
+            st.markdown("""
+            **Анализ:** Удельный импульс характеризует суммарное воздействие ударной волны на цель.
+            """)
+
+            st.subheader("🚀 Скорость ударной волны D_φ(R)")
+            st.pyplot(figures[2])
+            st.markdown("""
+            **Анализ:** Скорость распространения ударной волны уменьшается с расстоянием.
+            """)
+
+            st.subheader("⏱️ Длительность фазы сжатия τ₊ (R)")
+            st.pyplot(figures[3])
+            st.markdown("""
+            **Анализ:** Длительность положительной фазы давления увеличивается с расстоянием.
+            """)
+
+            st.subheader("💨 Скоростной напор p_φок(R)")
+            st.pyplot(figures[4])
+            st.markdown("""
+            **Анализ:** Скоростной напор характеризует динамическое воздействие на препятствия.
+            """)
+
+            st.subheader("⏰ Временные зависимости давления")
+            st.pyplot(figures[5])
+            st.markdown(f"""
+            **Анализ:** Временные зависимости давления в точке R={target_distance:.2f} м.
+            Сплошные линии - избыточное давление, пунктирные - скоростной напор.
+            """)
 
         # Расчет минимальной массы
         st.subheader("📋 Результаты расчета")
@@ -442,7 +536,8 @@ def main():
             st.success(
                 f"**Минимальная масса {selected_explosive_name}**: **{mm:.3f} кг**\n\n"
                 f"*Эквивалентная масса тротила: {equivalent_mass:.3f} кг*\n\n"
-                f"Для поражения цели '{selected_name}' на расстоянии {target_distance:.2f} м"
+                f"Для {selected_damage_level.lower()} ({DEFAULT_TARGETS[selected_target_name][selected_damage_level]} кПа) цели '{selected_target_name}' "
+                f"на расстоянии {target_distance:.2f} м"
             )
         else:
             st.warning(
@@ -489,4 +584,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
