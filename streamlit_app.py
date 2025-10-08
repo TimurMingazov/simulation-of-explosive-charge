@@ -408,7 +408,7 @@ def main():
             "Или задайте точное значение стойкости (кПа)",
             value=float(selected_value),
             min_value=1.0,
-            max_value=1000.0,
+            max_value=1500.0,
             step=1.0,
             help="Можно ввести точное значение для тонкой настройки"
         )
@@ -584,3 +584,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
