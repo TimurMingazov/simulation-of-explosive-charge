@@ -3,14 +3,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from io import BytesIO
+from docxtpl import DocxTemplate
+import tempfile
+import os
 
 # ---------------------------
 # Константы и дефолтные цели
 # ---------------------------
-DEFAULT_MASSES = [2.0, 3.8, 5.0]
-MIN_MASS_ALLOWED = 0.01
-MAX_MASSES = 5
-
 AIR_DENSITY = 1.225  # кг/м³
 SOUND_SPEED = 340.0  # м/с
 ADIABATIC_INDEX = 1.4
@@ -52,12 +51,6 @@ DEFAULT_TARGETS = {
     }
 }
 
-
-# Добавим функцию для получения степеней разрушения
-def get_damage_levels(target_name):
-    """Возвращает доступные степени разрушения для цели"""
-    return list(DEFAULT_TARGETS[target_name].keys())
-
 # ---------------------------
 # БАЗА ДАННЫХ ВЗРЫВЧАТЫХ ВЕЩЕСТВ
 # ---------------------------
@@ -65,35 +58,48 @@ EXPLOSIVES_DB = {
     "Тротил (TNT)": {
         "tnt_equivalent": 1.0,
         "density": 1650,
+        "heat_of_explosion": 4180,  # кДж/кг
+        "detonation_velocity": 6900,  # м/с
         "color": "#ff0000"
     },
     "Гексоген (RDX)": {
         "tnt_equivalent": 1.3,
         "density": 1780,
+        "heat_of_explosion": 5430,
+        "detonation_velocity": 8750,
         "color": "#00ff00"
     },
     "Пентолит 50/50 (ТЭН/ТНТ)": {
         "tnt_equivalent": 1.13,
         "density": 1700,
+        "heat_of_explosion": 4720,
+        "detonation_velocity": 7460,
         "color": "#0000ff"
     },
     "ТЭН": {
         "tnt_equivalent": 1.33,
         "density": 1770,
+        "heat_of_explosion": 5560,
+        "detonation_velocity": 8300,
         "color": "#ff00ff"
     },
     "Аммонийная селитра": {
         "tnt_equivalent": 0.34,
         "density": 1725,
+        "heat_of_explosion": 1420,
+        "detonation_velocity": 2700,
         "color": "#ffff00"
     },
     "Гликольдинитрат": {
         "tnt_equivalent": 1.57,
         "density": 1760,
+        "heat_of_explosion": 6560,
+        "detonation_velocity": 9100,
         "color": "#000000"
     },
 }
 DEFAULT_EXPLOSIVE = "Тротил (TNT)"
+
 
 # ---------------------------
 # Базовые функции расчёта
@@ -102,11 +108,6 @@ DEFAULT_EXPLOSIVE = "Тротил (TNT)"
 def calculate_scaled_radius(mass, tnt_equivalent=1.0):
     equivalent_mass = mass * tnt_equivalent
     return 0.05 * (equivalent_mass ** (1 / 3))
-
-
-def calculate_scaled_distance(mass, distance, tnt_equivalent=1.0):
-    R_s = calculate_scaled_radius(mass, tnt_equivalent)
-    return distance / R_s
 
 
 def calculate_overpressure(mass, distance, tnt_equivalent=1.0):
@@ -159,10 +160,6 @@ def calculate_specific_impulse(overpressure, distance, mass, tnt_equivalent=1.0)
     return overpressure * 1e6 * tau
 
 
-# ---------------------------
-# Временные сигналы
-# ---------------------------
-
 def pressure_time_history(mass, distance, t_array, tnt_equivalent=1.0):
     equivalent_mass = mass * tnt_equivalent
     p_peak = calculate_overpressure(mass, distance, tnt_equivalent)
@@ -189,11 +186,6 @@ def pressure_time_history(mass, distance, t_array, tnt_equivalent=1.0):
     return p_t
 
 
-def dynamic_pressure_time_history(mass, distance, t_array, tnt_equivalent=1.0):
-    p_t = pressure_time_history(mass, distance, t_array, tnt_equivalent)
-    return np.array([calculate_dynamic_pressure_from_state(p) for p in p_t])
-
-
 # ---------------------------
 # Минимальная масса
 # ---------------------------
@@ -215,158 +207,124 @@ def find_minimum_mass_for_pressure(target_distance, pressure_resistance_kpa, tnt
 
 
 # ---------------------------
-# Парсеры ввода
+# Генерация графиков для отчета
 # ---------------------------
 
-def parse_mass_list(inp):
-    if not inp:
-        return DEFAULT_MASSES
-    try:
-        parts = [p.strip() for p in inp.split(',') if p.strip() != '']
-        masses = [float(p) for p in parts]
-        if len(masses) > MAX_MASSES:
-            st.warning(f"Введено больше {MAX_MASSES} масс — будут использованы первые {MAX_MASSES}.")
-            masses = masses[:MAX_MASSES]
-        masses = [max(m, MIN_MASS_ALLOWED) for m in masses]
-        return masses
-    except Exception:
-        st.error("Ошибка парсинга масс, использую значения по умолчанию")
-        return DEFAULT_MASSES
+def create_report_graphs(min_mass, target_distance, selected_value, distance_range, tnt_equivalent=1.0,
+                         explosive_name="ВВ"):
+    """Создает все графики для отчета"""
+    figures = {}
 
-
-def parse_distance_input(inp):
-    if not inp:
-        return np.linspace(1.0, 10.0, 100)
-    inp = inp.strip()
-    for sep in (':', '-'):
-        if sep in inp:
-            parts = inp.split(sep)
-            try:
-                if len(parts) == 2:
-                    a = float(parts[0]);
-                    b = float(parts[1])
-                    if abs(a - b) < 1e-6:
-                        return np.linspace(max(0.1, a * 0.9), a * 1.1 if a > 0 else 1.0, 100)
-                    return np.linspace(min(a, b), max(a, b), 100)
-                elif len(parts) == 3:
-                    a = float(parts[0]);
-                    b = float(parts[1]);
-                    n = int(parts[2])
-                    if abs(a - b) < 1e-6:
-                        return np.linspace(max(0.1, a * 0.9), a * 1.1 if a > 0 else 1.0, max(2, n))
-                    return np.linspace(min(a, b), max(a, b), max(2, n))
-            except:
-                continue
-    try:
-        val = float(inp)
-        return np.linspace(max(0.1, val * 0.9), val * 1.1 if val > 0 else 1.0, 100)
-    except:
-        st.error("Неверный формат расстояния — использую диапазон 1..10 м")
-        return np.linspace(1.0, 10.0, 100)
-
-
-# ---------------------------
-# Визуализация
-# ---------------------------
-
-def create_plots(masses, distance_range, selected_target_name, selected_target_value, target_distance,
-                 tnt_equivalent=1.0, explosive_name="ВВ"):
-    distance_range = np.array(distance_range)
-
-    figures = []  # Список для всех графиков
-
-    # 1) Δp - отдельный график
+    # 1) График радиуса поражения для минимальной массы
     fig1, ax = plt.subplots(figsize=(10, 6))
-    for m in masses:
-        overpressures = np.array([calculate_overpressure(m, r, tnt_equivalent) for r in distance_range]) * 1000.0
-        ax.plot(distance_range, overpressures, label=f'{m} кг', linewidth=2)
-    ax.axhline(y=selected_target_value, color='r', linestyle='--', label=f'Цель: {selected_target_name}')
+    overpressures = np.array([calculate_overpressure(min_mass, r, tnt_equivalent) for r in distance_range]) * 1000.0
+    ax.plot(distance_range, overpressures, linewidth=2, color='blue')
+    ax.axhline(y=selected_value, color='r', linestyle='--', label=f'Требуемое давление: {selected_value} кПа')
+    ax.axvline(x=target_distance, color='g', linestyle='--', label=f'Расстояние до цели: {target_distance} м')
     ax.set_xlabel('Расстояние, м')
     ax.set_ylabel('Δp, кПа')
-    ax.set_title(f'Избыточное давление Δp от расстояния ({explosive_name})')
+    ax.set_title(f'Радиус поражения (масса ВВ = {min_mass:.3f} кг)')
     ax.grid(True)
     ax.legend()
     plt.tight_layout()
-    figures.append(fig1)
+    figures['damage_radius_graph_one'] = fig1
 
-    # 2) Удельный импульс - отдельный график
+    # 2) Сравнительный график для масс ±20% от минимальной
     fig2, ax = plt.subplots(figsize=(10, 6))
-    for m in masses:
-        overpressures = np.array([calculate_overpressure(m, r, tnt_equivalent) for r in distance_range])
-        specific_impulses = np.array(
-            [calculate_specific_impulse(p, r, m, tnt_equivalent) for p, r in zip(overpressures, distance_range)])
-        ax.plot(distance_range, specific_impulses, label=f'{m} кг', linewidth=2)
+    masses_comparison = [
+        min_mass * 0.8,  # -20%
+        min_mass,  # минимальная
+        min_mass * 1.2  # +20%
+    ]
+
+    for m in masses_comparison:
+        overpressures = np.array([calculate_overpressure(m, r, tnt_equivalent) for r in distance_range]) * 1000.0
+        label = f'{m:.3f} кг'
+        if m == min_mass:
+            label += ' (мин. масса)'
+        ax.plot(distance_range, overpressures, label=label, linewidth=2)
+
+    ax.axhline(y=selected_value, color='r', linestyle='--', label=f'Требуемое давление: {selected_value} кPa')
+    ax.set_xlabel('Расстояние, м')
+    ax.set_ylabel('Δp, кПа')
+    ax.set_title('Радиусы поражения для различных масс')
+    ax.grid(True)
+    ax.legend()
+    plt.tight_layout()
+    figures['damage_radius_graph_more'] = fig2
+
+    # 3) Удельный импульс
+    fig3, ax = plt.subplots(figsize=(10, 6))
+    overpressures = np.array([calculate_overpressure(min_mass, r, tnt_equivalent) for r in distance_range])
+    specific_impulses = np.array(
+        [calculate_specific_impulse(p, r, min_mass, tnt_equivalent) for p, r in zip(overpressures, distance_range)])
+    ax.plot(distance_range, specific_impulses, linewidth=2, color='purple')
     ax.set_xlabel('Расстояние, м')
     ax.set_ylabel('Удельный импульс, Па·с')
-    ax.set_title(f'Удельный импульс I = Δp·τ_+ ({explosive_name})')
+    ax.set_title(f'Зависимость удельного импульса от расстояния')
     ax.grid(True)
-    ax.legend()
     plt.tight_layout()
-    figures.append(fig2)
+    figures['specific_impulse_graph'] = fig3
 
-    # 3) Скорость ударной волны - отдельный график
-    fig3, ax = plt.subplots(figsize=(10, 6))
-    for m in masses:
-        overpressures = np.array([calculate_overpressure(m, r, tnt_equivalent) for r in distance_range])
-        D = np.array([calculate_shock_wave_velocity(p) for p in overpressures])
-        ax.plot(distance_range, D, label=f'{m} кг', linewidth=2)
-    ax.set_xlabel('Расстояние, м')
-    ax.set_ylabel('Скорость ударной волны, м/с')
-    ax.set_title(f'Скорость ударной волны D_φ(R) ({explosive_name})')
-    ax.grid(True)
-    ax.legend()
-    plt.tight_layout()
-    figures.append(fig3)
-
-    # 4) τ_+ - отдельный график
+    # 4) Скоростной напор
     fig4, ax = plt.subplots(figsize=(10, 6))
-    for m in masses:
-        taus = np.array([calculate_compression_duration(m, r, tnt_equivalent) for r in distance_range])
-        ax.plot(distance_range, taus, label=f'{m} кг', linewidth=2)
-    ax.set_xlabel('Расстояние, м')
-    ax.set_ylabel('τ_+, с')
-    ax.set_title(f'Длительность фазы сжатия τ_+ (R) ({explosive_name})')
-    ax.grid(True)
-    ax.legend()
-    plt.tight_layout()
-    figures.append(fig4)
-
-    # 5) p_dyn(R) - отдельный график
-    fig5, ax = plt.subplots(figsize=(10, 6))
-    for m in masses:
-        overpressures = np.array([calculate_overpressure(m, r, tnt_equivalent) for r in distance_range])
-        p_dyn = np.array([calculate_dynamic_pressure_from_state(p) for p in overpressures])
-        ax.plot(distance_range, p_dyn / 1000.0, label=f'{m} кг', linewidth=2)
+    overpressures = np.array([calculate_overpressure(min_mass, r, tnt_equivalent) for r in distance_range])
+    p_dyn = np.array([calculate_dynamic_pressure_from_state(p) for p in overpressures])
+    ax.plot(distance_range, p_dyn / 1000.0, linewidth=2, color='orange')
     ax.set_xlabel('Расстояние, м')
     ax.set_ylabel('p_dyn, кПа')
-    ax.set_title(f'Скоростной напор p_φок(R) ({explosive_name})')
+    ax.set_title(f'Зависимость скоростного напора от расстояния')
     ax.grid(True)
-    ax.legend()
     plt.tight_layout()
-    figures.append(fig5)
+    figures['highspeed_pressure_graph'] = fig4
 
-    # 6) Временные сигналы - отдельный график
+    # 5) Скорость распространения УВ
+    fig5, ax = plt.subplots(figsize=(10, 6))
+    overpressures = np.array([calculate_overpressure(min_mass, r, tnt_equivalent) for r in distance_range])
+    D = np.array([calculate_shock_wave_velocity(p) for p in overpressures])
+    ax.plot(distance_range, D, linewidth=2, color='brown')
+    ax.set_xlabel('Расстояние, м')
+    ax.set_ylabel('Скорость ударной волны, м/с')
+    ax.set_title(f'Скорость распространения УВ')
+    ax.grid(True)
+    plt.tight_layout()
+    figures['graph_wave_spreading_rate'] = fig5
+
+    # 6) Длительность фазы сжатия
     fig6, ax = plt.subplots(figsize=(10, 6))
-    max_tau = max([calculate_compression_duration(m, target_distance, tnt_equivalent) +
-                   calculate_rarefaction_duration(m, tnt_equivalent) for m in masses])
+    taus = np.array([calculate_compression_duration(min_mass, r, tnt_equivalent) for r in distance_range])
+    ax.plot(distance_range, taus, linewidth=2, color='green')
+    ax.set_xlabel('Расстояние, м')
+    ax.set_ylabel('τ_+, с')
+    ax.set_title(f'Длительность фазы сжатия')
+    ax.grid(True)
+    plt.tight_layout()
+    figures['phase_duration_graph'] = fig6
+
+    # 7) Изменение давления от времени
+    fig7, ax = plt.subplots(figsize=(10, 6))
+    max_tau = calculate_compression_duration(min_mass, target_distance,
+                                             tnt_equivalent) + calculate_rarefaction_duration(min_mass, tnt_equivalent)
     t_stop = max(3 * max_tau, 0.05)
     t = np.linspace(0, t_stop, 1000)
-
-    for m in masses:
-        p_t = pressure_time_history(m, target_distance, t, tnt_equivalent) * 1000.0
-        p_dyn_t = dynamic_pressure_time_history(m, target_distance, t, tnt_equivalent) / 1000.0
-        ax.plot(t, p_t, label=f'Δp(t), m={m} кг', linewidth=2)
-        ax.plot(t, p_dyn_t, linestyle='--', label=f'p_dyn(t), m={m} кг', linewidth=2)
-
+    p_t = pressure_time_history(min_mass, target_distance, t, tnt_equivalent) * 1000.0
+    ax.plot(t, p_t, linewidth=2, color='red')
     ax.set_xlabel('Время, с')
     ax.set_ylabel('Давление, кПа')
-    ax.set_title(f'Временные зависимости в точке R={target_distance:.2f} м ({explosive_name})')
+    ax.set_title(f'Изменение давления от времени (R={target_distance:.2f} м)')
     ax.grid(True)
-    ax.legend()
     plt.tight_layout()
-    figures.append(fig6)
+    figures['pressure_change_schedule'] = fig7
 
     return figures
+
+def save_plot_to_buffer(fig):
+    """Сохраняет график в буфер памяти"""
+    buf = BytesIO()
+    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+    buf.seek(0)
+    plt.close(fig)  # Закрываем фигуру чтобы освободить память
+    return buf
 
 
 # ---------------------------
@@ -377,27 +335,26 @@ def main():
     st.set_page_config(page_title="Симулятор взрывных воздействий", layout="wide")
 
     st.title("💥 Симулятор взрывных воздействий")
-    st.markdown("Расчет параметров ударной волны для различных масс ВВ и расстояний")
+    st.markdown("Расчет минимальной массы ВВ и генерация отчета")
 
     # Сайдбар с настройками
+    # Сайдбар с настройками
     with st.sidebar:
-
-        st.header("⚙️ Параметры расчета")
+        st.header("🎯 Параметры цели")
 
         # Выбор цели
         selected_target_name = st.selectbox(
             "Выберите цель",
             options=list(DEFAULT_TARGETS.keys()),
-            index=0
+            index=1  # По умолчанию промышленные здания
         )
 
         # Выбор степени разрушения
-        damage_levels = get_damage_levels(selected_target_name)
+        damage_levels = list(DEFAULT_TARGETS[selected_target_name].keys())
         selected_damage_level = st.selectbox(
             "Степень разрушения",
             options=damage_levels,
-            index=0,
-            help="Выберите требуемую степень повреждения цели"
+            index=0
         )
 
         # Получаем стандартное значение
@@ -405,25 +362,23 @@ def main():
 
         # Настройка стойкости цели
         custom_resistance = st.number_input(
-            "Или задайте точное значение стойкости (кПа)",
+            "Точное значение стойкости цели (кПа)",
             value=float(selected_value),
             min_value=1.0,
             max_value=1500.0,
-            step=1.0,
-            help="Можно ввести точное значение для тонкой настройки"
+            step=1.0
         )
 
-        # Используем кастомное значение если оно отличается от стандартного
-        if custom_resistance != selected_value:
-            selected_value = custom_resistance
-            damage_display = f"пользовательское значение ({custom_resistance} кПа)"
-        else:
-            damage_display = f"{selected_damage_level} ({selected_value} кПа)"
+        # Расстояние до цели
+        target_distance = st.slider(
+            "Расстояние до цели (м)",
+            min_value=1.0,
+            max_value=10.0,
+            value=10.0,
+            step=0.1
+        )
 
-        st.info(f"**Выбрано:** {selected_target_name}\n"
-                f"**Стойкость:** {damage_display}")
-
-        st.header("⚙️ Параметры взрывчатого вещества")
+        st.header("💣 Параметры ВВ")
 
         # Выбор типа ВВ
         explosive_names = list(EXPLOSIVES_DB.keys())
@@ -433,155 +388,181 @@ def main():
             index=explosive_names.index(DEFAULT_EXPLOSIVE)
         )
         selected_explosive_data = EXPLOSIVES_DB[selected_explosive_name]
-        tnt_equiv = selected_explosive_data["tnt_equivalent"]
 
-        st.info(f"**{selected_explosive_name}**\n\n"
-                f"Коэффициент приведения к тротилу: **{tnt_equiv}**\n\n"
-                f"*Эквивалентная масса тротила = Масса ВВ × {tnt_equiv}*")
+        # Информация о ВВ
+        st.info(f"""
+        **{selected_explosive_name}**
+        - Коэффициент приведения к тротилу: **{selected_explosive_data['tnt_equivalent']}**
+        - Теплота взрыва: **{selected_explosive_data['heat_of_explosion']}** кДж/кг
+        - Скорость детонации: **{selected_explosive_data['detonation_velocity']}** м/с
+        - Плотность: **{selected_explosive_data['density']}** кг/м³
+        """)
 
-        # Ввод масс
-        masses_input = st.text_input(
-            "Массы заряда через запятую (кг)",
-            value="2.0, 3.8, 5.0",
-            help="Введите массы через запятую, например: 2.0, 3.8, 5.0"
-        )
-        masses = parse_mass_list(masses_input)
+        st.header("📊 Настройки графиков")
 
-        # Диапазон расстояний
-        dist_input = st.text_input(
-            "Диапазон расстояний",
-            value="1-10",
-            help="Формат: '1-10' или '1:10:100' или '5'"
-        )
-        distance_range = parse_distance_input(dist_input)
-
-        # Target distance
-        target_distance = st.slider(
-            "Расстояние между взрывом и целью (м)",
-            min_value=float(distance_range[0]),
-            max_value=float(distance_range[-1]),
-            value=float(np.mean(distance_range)),
+        # Диапазон расстояний для графиков
+        st.subheader("Диапазон расстояний на графиках")
+        dist_min = st.number_input(
+            "Минимальное расстояние (м)",
+            min_value=0.1,
+            max_value=100.0,
+            value=1.0,
             step=0.1
         )
 
-        # Кнопка расчета
-        calculate_btn = st.button("🚀 Запустить расчет", type="primary")
-
-    # Основная область
-    if calculate_btn:
-        st.success("✅ Расчет выполнен!")
-
-        # Показываем используемые параметры
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Тип ВВ", selected_explosive_name)
-        with col2:
-            st.metric("Коэффициент", f"{tnt_equiv}")
-        with col3:
-            st.metric("Массы заряда", ", ".join(map(str, masses)) + " кг")
-        with col4:
-            st.metric("Цель", f"{selected_target_name}\n({selected_damage_level}: {selected_value} кПа)")
-
-        # Создаем и показываем графики
-        with st.spinner("Создание графиков..."):
-            figures = create_plots(masses, distance_range, selected_target_name, selected_value,
-                                   target_distance, tnt_equiv, selected_explosive_name)
-
-            # Отображаем каждый график отдельно с заголовком
-            st.subheader("📈 Избыточное давление Δp от расстояния")
-            st.pyplot(figures[0])
-            st.markdown(f"""
-            **Анализ:** График показывает зависимость избыточного давления от расстояния для {selected_explosive_name}.
-            Красная пунктирная линия indicates целевое значение давления для выбранной цели.
-            """)
-
-            st.subheader("📊 Удельный импульс I = Δp·τ₊")
-            st.pyplot(figures[1])
-            st.markdown("""
-            **Анализ:** Удельный импульс характеризует суммарное воздействие ударной волны на цель.
-            """)
-
-            st.subheader("🚀 Скорость ударной волны D_φ(R)")
-            st.pyplot(figures[2])
-            st.markdown("""
-            **Анализ:** Скорость распространения ударной волны уменьшается с расстоянием.
-            """)
-
-            st.subheader("⏱️ Длительность фазы сжатия τ₊ (R)")
-            st.pyplot(figures[3])
-            st.markdown("""
-            **Анализ:** Длительность положительной фазы давления увеличивается с расстоянием.
-            """)
-
-            st.subheader("💨 Скоростной напор p_φок(R)")
-            st.pyplot(figures[4])
-            st.markdown("""
-            **Анализ:** Скоростной напор характеризует динамическое воздействие на препятствия.
-            """)
-
-            st.subheader("⏰ Временные зависимости давления")
-            st.pyplot(figures[5])
-            st.markdown(f"""
-            **Анализ:** Временные зависимости давления в точке R={target_distance:.2f} м.
-            Сплошные линии - избыточное давление, пунктирные - скоростной напор.
-            """)
-
-        # Расчет минимальной массы
-        st.subheader("📋 Результаты расчета")
-
-        mm = find_minimum_mass_for_pressure(target_distance, selected_value, tnt_equiv)
-        equivalent_mass = mm * tnt_equiv if mm else None
-
-        if mm:
-            st.success(
-                f"**Минимальная масса {selected_explosive_name}**: **{mm:.3f} кг**\n\n"
-                f"*Эквивалентная масса тротила: {equivalent_mass:.3f} кг*\n\n"
-                f"Для {selected_damage_level.lower()} ({DEFAULT_TARGETS[selected_target_name][selected_damage_level]} кПа) цели '{selected_target_name}' "
-                f"на расстоянии {target_distance:.2f} м"
-            )
-        else:
-            st.warning(
-                f"Не удалось достичь требуемого давления {selected_value} кПа на расстоянии {target_distance:.2f} м"
-            )
-
-        # Таблица результатов
-        results_data = []
-        for m in masses:
-            p = calculate_overpressure(m, target_distance, tnt_equiv) * 1000.0
-            p_dyn = calculate_dynamic_pressure_from_state(
-                calculate_overpressure(m, target_distance, tnt_equiv)) / 1000.0
-            tau = calculate_compression_duration(m, target_distance, tnt_equiv)
-            I = calculate_specific_impulse(calculate_overpressure(m, target_distance, tnt_equiv),
-                                           target_distance, m, tnt_equiv)
-            results_data.append({
-                "Масса ВВ, кг": m,
-                "Эквив. масса TNT, кг": round(m * tnt_equiv, 3),
-                "Δp, кПа": round(p, 2),
-                "p_dyn, кПа": round(p_dyn, 3),
-                "τ_+, с": round(tau, 4),
-                "I, Па·с": round(I, 3)
-            })
-
-        df = pd.DataFrame(results_data)
-        st.dataframe(df.style.format({
-            "Масса ВВ, кг": "{:.2f}",
-            "Эквив. масса TNT, кг": "{:.3f}",
-            "Δp, кПа": "{:.2f}",
-            "p_dyn, кПа": "{:.3f}",
-            "τ_+, с": "{:.4f}",
-            "I, Па·с": "{:.3f}"
-        }))
-
-        # Кнопка скачивания результатов
-        csv = df.to_csv(index=False)
-        st.download_button(
-            label="📥 Скачать результаты (CSV)",
-            data=csv,
-            file_name="blast_simulation_results.csv",
-            mime="text/csv"
+        dist_max = st.number_input(
+            "Максимальное расстояние (м)",
+            min_value=1.0,
+            max_value=500.0,
+            value=30.0,
+            step=1.0
         )
+
+        dist_points = st.slider(
+            "Количество точек на графике",
+            min_value=50,
+            max_value=500,
+            value=200,
+            step=50
+        )
+
+        # Создаем диапазон расстояний
+        distance_range = np.linspace(dist_min, dist_max, dist_points)
+
+        # Данные студента
+        st.header("👤 Данные студента")
+        student_name = st.text_input("ФИО студента", value="Иванов И.И.")
+        variant_number = st.number_input("Номер варианта", min_value=1, max_value=100, value=1)
+
+        # Кнопка расчета
+        calculate_btn = st.button("🚀 Рассчитать минимальную массу", type="primary")
+    # Основная область
+    # В основной области после расчета минимальной массы:
+    if calculate_btn:
+        # Расчет минимальной массы
+        min_mass = find_minimum_mass_for_pressure(
+            target_distance,
+            custom_resistance,
+            selected_explosive_data['tnt_equivalent']
+        )
+
+        if min_mass is None:
+            st.error("❌ Не удалось достичь требуемого давления с разумными массами ВВ")
+            return
+
+        st.success(f"✅ Расчет выполнен! Минимальная масса: {min_mass:.3f} кг")
+
+        # Показываем информацию о диапазоне
+        st.info(f"📊 Диапазон расстояний на графиках: от {dist_min} м до {dist_max} м ({dist_points} точек)")
+
+        # Показываем результаты
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Минимальная масса ВВ", f"{min_mass:.3f} кг")
+        with col2:
+            st.metric("Эквивалент TNT", f"{min_mass * selected_explosive_data['tnt_equivalent']:.3f} кг")
+        with col3:
+            st.metric("Требуемое давление", f"{custom_resistance} кПа")
+
+            # Создаем графики для отчета с пользовательским диапазоном
+        with st.spinner("Создание графиков для отчета..."):
+            figures = create_report_graphs(
+                min_mass,
+                target_distance,
+                custom_resistance,
+                distance_range,
+                selected_explosive_data['tnt_equivalent'],
+                selected_explosive_name
+            )
+
+
+            # Сохраняем графики в буферы
+            graph_buffers = {}
+            for name, fig in figures.items():
+                graph_buffers[name] = save_plot_to_buffer(fig)
+
+        # Показываем превью графиков
+        st.subheader("📊 Графики для отчета")
+
+        cols = st.columns(2)
+        graph_names = list(figures.keys())
+
+        for i, graph_name in enumerate(graph_names):
+            with cols[i % 2]:
+                st.image(graph_buffers[graph_name], caption=graph_name, use_column_width=True)
+
+        # Генерация отчета - ПРАВИЛЬНАЯ версия для Streamlit
+        st.subheader("📄 Генерация отчета")
+
+        # Создаем отчет в памяти
+        try:
+            # Проверяем шаблон
+            if not os.path.exists("Shablon.docx"):
+                st.error("❌ Файл шаблона 'Shablon.docx' не найден")
+                return
+
+            st.info("🔄 Подготавливаю данные для отчета...")
+
+            # Подготавливаем данные - ОСОБЕННОСТЬ: для изображений используем специальный объект
+            from docxtpl import InlineImage
+            from docx.shared import Mm
+
+            # Загружаем шаблон ДО создания контекста с изображениями
+            doc = DocxTemplate("Shablon.docx")
+
+            # Создаем контекст с InlineImage для графиков
+            context = {
+                # Текстовые данные
+                'name': student_name,
+                'var': variant_number,
+                'VV': selected_explosive_name,
+                'qv': selected_explosive_data['heat_of_explosion'],
+                'd': selected_explosive_data['detonation_velocity'],
+                'ro': selected_explosive_data['density'],
+                'target': selected_target_name,
+                'def': custom_resistance,
+                'dist_target': target_distance,
+                'degree_dest': selected_damage_level,
+                'required_pressure': custom_resistance,
+                'required_weight': min_mass,
+
+                # Графики как InlineImage
+                'damage_radius_graph_one': InlineImage(doc, graph_buffers['damage_radius_graph_one'], width=Mm(150)),
+                'damage_radius_graph_more': InlineImage(doc, graph_buffers['damage_radius_graph_more'], width=Mm(150)),
+                'specific_impulse_graph': InlineImage(doc, graph_buffers['specific_impulse_graph'], width=Mm(150)),
+                'highspeed_pressure_graph': InlineImage(doc, graph_buffers['highspeed_pressure_graph'], width=Mm(150)),
+                'graph_wave_spreading_rate': InlineImage(doc, graph_buffers['graph_wave_spreading_rate'],
+                                                         width=Mm(150)),
+                'phase_duration_graph': InlineImage(doc, graph_buffers['phase_duration_graph'], width=Mm(150)),
+                'pressure_change_schedule': InlineImage(doc, graph_buffers['pressure_change_schedule'], width=Mm(150)),
+            }
+
+            st.info("🔄 Генерирую отчет...")
+
+            # Рендерим документ
+            doc.render(context)
+
+            # Сохраняем в буфер
+            output_buffer = BytesIO()
+            doc.save(output_buffer)
+            output_buffer.seek(0)
+
+            st.success("✅ Отчет готов!")
+
+            # Кнопка скачивания
+            st.download_button(
+                label="📥 Скачать отчет DOCX",
+                data=output_buffer,
+                file_name=f"отчет_лабораторная_{student_name}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                type="primary"
+            )
+
+        except Exception as e:
+            st.error(f"❌ Ошибка при генерации отчета: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
 
 
 if __name__ == "__main__":
     main()
-
