@@ -3,4 +3,5 @@ numpy==1.24.3
 matplotlib==3.7.1
 
 pandas==2.0.3
-docxtpl=0.20.1
+docxtpl==0.20.1
+
