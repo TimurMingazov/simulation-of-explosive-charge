@@ -1,8 +1,10 @@
 streamlit==1.49.1
 numpy==2.1.1
 matplotlib==3.9.2
+scipy==1.14.1
 
 pandas==2.2.3
 docxtpl==0.20.1
+
 
 
