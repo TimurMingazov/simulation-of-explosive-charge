@@ -664,9 +664,9 @@ def plot_to_base64(fig):
 def run():
     """Основная функция Streamlit приложения"""
     st.set_page_config(page_title="Расчет эффективности ОБЧ", layout="wide")
-    image = "media\mem.jpg"
+    image = os.path.join("media", "mem.jpg")
     st.image(image)
-    gif = "media\mem_gif.gif"
+    gif = os.path.join("media", "mem_gif.gif")
     st.image(gif)
 
     st.title("🧨 Программа расчета эффективности осколочных боевых частей")
@@ -884,4 +884,5 @@ def run():
             except Exception as e:
                 st.error(f"❌ Ошибка при генерации отчета: {str(e)}")
                 import traceback
+
                 st.code(traceback.format_exc())
