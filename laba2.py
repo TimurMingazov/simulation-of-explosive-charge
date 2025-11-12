@@ -427,7 +427,7 @@ def plot_shock_wave_velocity_vs_distance(fuel_type, mass, distance_range=(1, 50)
     return fig
 
 
-def main():
+def run():
     """Основная функция Streamlit приложения"""
     st.set_page_config(page_title="Расчет параметров взрыва ГПВС", layout="wide")
 
@@ -697,7 +697,3 @@ def get_destruction_description(destruction_level):
         'Слабые повреждения': 'слабого разрушения цели'
     }
     return descriptions.get(destruction_level, 'поражения цели')
-
-
-if __name__ == "__main__":
-    main()
