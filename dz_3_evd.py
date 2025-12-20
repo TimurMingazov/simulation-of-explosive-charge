@@ -2,6 +2,7 @@ import math
 import streamlit as st
 import os
 
+T_AMB = 0
 # Таблица 1 (стр. 6): металлы
 # ρ: 10^3 kg/m^3, k: W/mK, c: J/kgK, Tm, Tb: °C, Lm: 10^6 J/kg, Lv: 10^6 J/kg, R: -
 METALS = {
@@ -333,5 +334,6 @@ def run():
 
         st.subheader("Ответ")
         st.success(f"V ≈ **{V:.3e} м/с**  (≈ {V*100:.3e} см/с)")
+
 
 
