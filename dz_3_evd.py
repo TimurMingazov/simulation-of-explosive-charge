@@ -197,6 +197,11 @@ def run():
     st.title("Практика 3: Лазерная микрообработка материалов и сварка")
     st.caption("Формулы и исходные данные взяты из PDF (стр. 2–6).")
 
+    cat0 = os.path.join("media", "cat0.jpg")
+    st.image(cat0)
+    cat1 = os.path.join("media", "cat1.jpg")
+    st.image(cat1)
+
     task = st.sidebar.selectbox("Выберите задачу", ["Задача 1", "Задача 2", "Задача 3", "Задача 4"])
     variant = st.sidebar.selectbox("Вариант", list(range(1, 11)))
 
@@ -327,3 +332,4 @@ def run():
 
         st.subheader("Ответ")
         st.success(f"V ≈ **{V:.3e} м/с**  (≈ {V*100:.3e} см/с)")
+
