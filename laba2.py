@@ -434,8 +434,7 @@ def run():
     st.title("Программа расчета параметров взрыва газопаровоздушных смесей")
     st.markdown("---")
 
-    image = os.path.join("media2", "warning.png")
-    st.image(image)
+
 
 
     # Сайдбар для ввода данных
@@ -697,3 +696,4 @@ def get_destruction_description(destruction_level):
         'Слабые повреждения': 'слабого разрушения цели'
     }
     return descriptions.get(destruction_level, 'поражения цели')
+
