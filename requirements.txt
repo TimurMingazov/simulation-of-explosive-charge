@@ -5,6 +5,4 @@ scipy==1.14.1
 
 pandas==2.2.3
 docxtpl==0.20.1
-
-
-
+setuptools==65.5.0
