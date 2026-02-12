@@ -86,6 +86,9 @@ def run():
     st.title("Экономика предприятия")
     st.markdown("---")
 
+    image = os.path.join("media2", "mem02.jpg")
+    st.image(image)
+
     tab1, tab2, tab3 = st.tabs(["Задача 1.1", "Задача 1.2", "📄 Генерация отчета"])
 
     if 'report_data' not in st.session_state:
@@ -724,3 +727,4 @@ def run():
                     with st.expander("Подробности ошибки (для отладки)", expanded=True):
                         st.code(traceback.format_exc(), language="python")
                     st.info("Чаще всего проблема в:\n• битый/неправильный шаблон .docx\n• конфликт кодировок\n• старая версия python-docx")
+
