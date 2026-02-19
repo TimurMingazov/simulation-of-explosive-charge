@@ -6,4 +6,4 @@ scipy==1.14.1
 pandas==2.2.3
 docxtpl==0.20.1
 setuptools==65.5.0
-sounddevice==0.5.5
+streamlit-webrtc==0.64.5
