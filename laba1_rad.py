@@ -574,9 +574,10 @@ def show_recording_page():
     st.markdown("""
     ### Инструкция
     1. Нажмите **Start** в нужной колонке
-    2. Произнесите фамилию (примерно 5 секунд)
-    3. Нажмите **Stop**
+    2. Дождитесь пока кнопка **Stop** станет с красным фоном
+    3. Произнесите фамилию (примерно 5 секунд, можно чуть больше)
     4. Нажмите **Сохранить запись**
+    5. Нажмите **Stop**
     """)
 
     col1, col2 = st.columns(2)
@@ -957,4 +958,5 @@ def show_report_page(frame_ms, overlap, lpc_order):
                 import traceback
                 with st.expander("Детали ошибки"):
                     st.code(traceback.format_exc())
+
 
