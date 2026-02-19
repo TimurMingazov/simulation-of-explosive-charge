@@ -540,7 +540,7 @@ def run():
     st.sidebar.title("Настройки")
     
     if "variant" not in st.session_state:
-    st.session_state.variant = 13
+        st.session_state.variant = 13
 
     if "student_name" not in st.session_state:
         st.session_state.student_name = "Иванов И.И."
@@ -964,5 +964,6 @@ def show_report_page(frame_ms, overlap, lpc_order):
                 import traceback
                 with st.expander("Детали ошибки"):
                     st.code(traceback.format_exc())
+
 
 
