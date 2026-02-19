@@ -538,6 +538,13 @@ def run():
     st.session_state.current_page = st.sidebar.radio("Перейти к:", pages)
 
     st.sidebar.title("Настройки")
+    
+    if "variant" not in st.session_state:
+    st.session_state.variant = 13
+
+    if "student_name" not in st.session_state:
+        st.session_state.student_name = "Иванов И.И."
+    
     st.session_state.variant = st.sidebar.number_input(
         "Номер варианта", min_value=1, max_value=30, value=st.session_state.variant
     )
@@ -957,4 +964,5 @@ def show_report_page(frame_ms, overlap, lpc_order):
                 import traceback
                 with st.expander("Детали ошибки"):
                     st.code(traceback.format_exc())
+
 
