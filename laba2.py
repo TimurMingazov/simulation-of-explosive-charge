@@ -62,7 +62,7 @@ EXPLOSIVES_DB = {
     },
 }
 
-# Класс GPVSExplosion (остается без изменений)
+
 class GPVSExplosion:
     def __init__(self, fuel_type, q, theta, target_type, target_size, protection_level):
         self.fuel_type = fuel_type
