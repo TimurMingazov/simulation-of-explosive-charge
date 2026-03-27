@@ -5,6 +5,7 @@ from laba3 import run as run_laba3
 from dz_2_evd import run as run_dz2_evd
 from dz_3_evd import run as run_dz3_evd
 from eco_dz1 import run as run_eco_dz1
+from eco_dz2 import run as run_eco_dz2
 from laba1_rad import run as run_laba1_rad
 
 def main():
@@ -13,7 +14,7 @@ def main():
     option = st.selectbox(
         "Выберите лабораторную работу",
         ("Лабораторная 1 ДСП", "Лабораторная 2 ДСП", "Лабораторная 3 ДСП", "Домашняя работа 2 Технология приборостроения", 
-         "Домашняя работа 3 Технология приборостроения", "ДЗ 1 Экономика предприятия", "Лабораторная 1 РадиоПередачаИнфы")
+         "Домашняя работа 3 Технология приборостроения", "ДЗ 1 Экономика предприятия", "ДЗ 2 Экономика предприятия", "Лабораторная 1 РадиоПередачаИнфы")
     )
 
     if option == "Лабораторная 1 ДСП":
@@ -28,6 +29,8 @@ def main():
         run_dz3_evd()
     elif option == "ДЗ 1 Экономика предприятия":
         run_eco_dz1()
+    elif option == "ДЗ 2 Экономика предприятия":
+        run_eco_dz2()
     elif option == "Лабораторная 1 РадиоПередачаИнфы":
         run_laba1_rad()
 
