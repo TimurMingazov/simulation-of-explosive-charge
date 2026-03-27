@@ -193,8 +193,8 @@ def generate_docx_file(template_path: str, context: dict) -> BytesIO:
 def run():
     st.title("Экономика — ДЗ 2")
 
-    image1 = os.path.join("hun_mem.jpg")
-    image2 = os.path.join("cofe_mem.jpg")
+    image1 = os.path.join("media", "hun_mem.jpg")
+    image2 = os.path.join("media", "cofe_mem.jpg")
     st.image(image1)
     st.image(image2)
 
@@ -378,5 +378,3 @@ def run():
 
             except Exception as e:
                 st.error(f"Ошибка при генерации Word-файла: {e}")
-
-run()
